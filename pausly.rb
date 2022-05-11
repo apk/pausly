@@ -1,11 +1,13 @@
 require 'webrick'
 require_relative 'htmltools'
 
-module Restie
+module Pausly
 
   class Server
-    def initialize(wrap=nil)
+    def initialize(wrap:nil, prefix: nil)
       @wrap=wrap||Wrapping.new
+      @prefix=prefix ? prefix.split('/',-1) : ['']
+puts "prefix: #{@prefix.inspect}"
       @tree={}
     end
 
@@ -13,7 +15,7 @@ module Restie
       mod.constants.each do |c|
         s=c.to_s
         if s =~ /\AU_/
-          n=$'.split('_')
+          n=$'.gsub('D','.').split('_')
           puts c.inspect
           r=mod.const_get(c)
           puts "#{n.inspect}: #{r.new.inspect}"
@@ -46,7 +48,19 @@ module Restie
       q=req.path.split('/',-1)
       p=@tree
       args=[]
+      i=0
+      @prefix.each do |p|
+        unless p == q.shift
+          resp.status=500
+          resp.body="Internal server (path) error\n"
+          return
+        end
+      end
       q.each do |c|
+        pi=@prefix[i]
+        if pi
+          next if pi == c
+        end
         next if c == '' # TODO: Only at the prefix!
         q=p[c]
         if q
@@ -230,5 +244,6 @@ module Restie
       @my.do_op(:do_delete,req,resp)
     end
   end
+
 end
 
