@@ -230,12 +230,12 @@ puts "prefix: #{@prefix.inspect}"
         end
       end
 
-      rp.body="<!doctype html public \"-//w3c//dtd html 4.0 transitional//en\">
+      rp.body="<!doctype html>
 <html>
 <head>
 <meta name='viewport' content='width=device-width'>
 <title>TODO</title>
-<link rel='stylesheet' type='text/css' href='$css'>
+<link rel='stylesheet' type='text/css' href='s/css'>
 </head>#{body}</html>
 "
     end
