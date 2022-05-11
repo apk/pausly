@@ -44,6 +44,25 @@ puts "prefix: #{@prefix.inspect}"
       Shim.new(self,x)
     end
 
+    def run_webrick(args)
+      port=4040
+      addr='0.0.0.0'
+      args.each do |a|
+        case a
+        when /\Aaddr=/
+          addr=$'
+        when /\Aport=(\d+)\Z/
+          port=$1.to_i
+        else
+          STDERR.puts "run_webrick: bad arg #{a.inspect}"
+        end
+      end
+
+      server = WEBrick::HTTPServer.new Port: port, BindAddress: addr
+      server.mount '/', self
+      server.start # Won't return; does the service
+    end
+
     def do_op(meth,req,resp)
       q=req.path.split('/',-1)
       p=@tree
