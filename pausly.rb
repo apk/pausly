@@ -124,9 +124,10 @@ puts "prefix: #{@prefix.inspect}"
   end
 
   class Io
-    attr_reader :cookies, :ip, :status, :headers, :method, :body
+    attr_reader :cookies, :ip, :status, :headers, :method, :body, :request
 
     def initialize(rq)
+      @request=rq
       @cookies={}
       @method=rq.request_method
       @body=HtmlTools::Tag.new('body')
