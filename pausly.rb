@@ -4,10 +4,9 @@ require_relative 'htmltools'
 module Pausly
 
   class Server
-    def initialize(wrap:nil, prefix: nil)
-      @wrap=wrap||Wrapping.new
+    def initialize(iogen: Io, prefix: nil)
+      @iogen=iogen
       @prefix=prefix ? prefix.split('/',-1) : ['']
-puts "prefix: #{@prefix.inspect}"
       @tree={}
     end
 
@@ -16,9 +15,9 @@ puts "prefix: #{@prefix.inspect}"
         s=c.to_s
         if s =~ /\AU_/
           n=$'.gsub('D','.').split('_')
-          puts c.inspect
+          # puts c.inspect
           r=mod.const_get(c)
-          puts "#{n.inspect}: #{r.new.inspect}"
+          # puts "#{n.inspect}: #{r.new.inspect}"
           p=@tree
           n.each do |m|
             if m == 'N'
@@ -30,13 +29,13 @@ puts "prefix: #{@prefix.inspect}"
             end
           end
           if p[:serve]
-            puts "Double"
+            STDERR.puts puts "Double #{n.inspect}"
           else
             p[:serve]=r
           end
         end
       end
-      puts @tree.inspect
+      # puts @tree.inspect
       self
     end
 
@@ -54,7 +53,9 @@ puts "prefix: #{@prefix.inspect}"
         when /\Aport=(\d+)\Z/
           port=$1.to_i
         else
-          STDERR.puts "run_webrick: bad arg #{a.inspect}"
+          unless block_given? and yield a
+            STDERR.puts "run_webrick: bad arg #{a.inspect}"
+          end
         end
       end
 
@@ -106,7 +107,6 @@ puts "prefix: #{@prefix.inspect}"
       if p
         p=p[:serve]
         if p
-          puts "P: #{p.inspect}"
           begin
             me=p.instance_method(meth)
           rescue NameError
@@ -114,64 +114,12 @@ puts "prefix: #{@prefix.inspect}"
             resp.body="Method not allowed\n"
             return
           end
-          @wrap.wrap(me.bind(p.new),req,resp,args)
+          wrap(me.bind(p.new),req,resp,args)
           return
         end
       end
       resp.status=404
       resp.body="Not found\n"
-    end
-  end
-
-  class Io
-    attr_reader :cookies, :ip, :status, :headers, :method, :body, :request
-
-    def initialize(rq)
-      @request=rq
-      @cookies={}
-      @method=rq.request_method
-      @body=HtmlTools::Tag.new('body')
-      @headers={}
-
-      c=rq['Cookie']
-      if c
-        c.split('; ').each do |x|
-          a=x.split('=',2)
-          if a.size == 2
-            @cookies[a[0]]=a[1]
-          end
-        end
-      end
-    end
-  end
-
-  class Wrapping
-
-    def initialize
-      @iomaker=nil
-    end
-
-    class Redirect < RuntimeError
-      attr_reader :headers, :code
-
-      def initialize(l,c=303,**headers)
-        @headers=headers
-        @headers['Location']=(l == '' ? '.' : l)
-        @code=c
-      end
-    end
-
-    class Data < RuntimeError
-      attr_reader :headers, :data
-      def initialize(type, data, **headers)
-        @headers=headers
-        @headers['Content-Type']=type
-        @data=data
-      end
-    end
-
-    def wrap_htmlesc(s)
-      s.gsub('&','&amp;').gsub('<','&lt;').gsub('>','&gt;')
     end
 
     def wrap(ob,rq,rp,args)
@@ -179,23 +127,15 @@ puts "prefix: #{@prefix.inspect}"
       rp.status=201
       begin
 
-        io=(@iomaker || Io).new(rq)
+        io=@iogen.new(rq)
         ob.call(io,*args)
 
         body=io.body.to_html
         headers=io.headers
         rp.status=(io.status || 200)
 
-      rescue Redirect => e
+      rescue Reply => e
         rp.status=e.code
-        e.headers.each_pair do |k,v|
-          rp[k]=v
-        end
-        rp.body=''
-        return
-
-      rescue Data => e
-        rp.status=200
         e.headers.each_pair do |k,v|
           rp[k]=v
         end
@@ -238,6 +178,61 @@ puts "prefix: #{@prefix.inspect}"
 <link rel='stylesheet' type='text/css' href='s/css'>
 </head>#{body}</html>
 "
+    end
+
+    def wrap_htmlesc(s)
+      s.gsub('&','&amp;').gsub('<','&lt;').gsub('>','&gt;')
+    end
+  end
+
+  class Io
+    attr_reader :cookies, :ip, :status, :headers, :method, :body, :data
+
+    def path
+      @request.path
+    end
+
+    def initialize(rq)
+      @request=rq
+      @cookies={}
+      @method=rq.request_method
+      @body=HtmlTools::Tag.new('body')
+      @headers={}
+      @data=nil
+
+      c=rq['Cookie']
+      if c
+        c.split('; ').each do |x|
+          a=x.split('=',2)
+          if a.size == 2
+            @cookies[a[0]]=a[1]
+          end
+        end
+      end
+    end
+  end
+
+  class Reply < RuntimeError
+    attr_reader :headers, :code, :data
+
+    def initialize(data,c=200,**headers)
+      @headers=headers
+      @code=c
+      @data=data
+    end
+  end
+
+  class RedirectReply < Reply
+    def initialize(l,c=303,**headers)
+      super('',c,**headers)
+      @headers['Location']=(l == '' ? '.' : l)
+    end
+  end
+
+  class DataReply < Reply
+    def initialize(type, data, **headers)
+      super(data,**headers)
+      @headers['Content-Type']=type
     end
   end
 
