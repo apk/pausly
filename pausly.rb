@@ -4,6 +4,8 @@ require_relative 'htmltools'
 module Pausly
 
   class Server
+    attr_reader :prefix
+
     def initialize(iogen: Io, prefix: nil)
       @iogen=iogen
       @prefix=prefix ? prefix.split('/',-1) : ['']
@@ -14,8 +16,12 @@ module Pausly
       mod.constants.each do |c|
         s=c.to_s
         if s =~ /\AU_/
-          n=$'.gsub('D','.').split('_')
-          # puts c.inspect
+          h=$'
+          # A trailing _ means that the URL must have a trailing /
+          # but we must special-case a single _ b/c that would require
+          # // in the URL otherwise. Ugly, admittedly.
+          n=(h=='_' ? [''] : h.gsub('D','.').split('_',-1))
+          # puts "#{c.inspect} => #{h.inspect} => #{n.inspect}"
           r=mod.const_get(c)
           # puts "#{n.inspect}: #{r.new.inspect}"
           p=@tree
@@ -66,22 +72,22 @@ module Pausly
 
     def do_op(meth,req,resp)
       q=req.path.split('/',-1)
-      p=@tree
-      args=[]
-      i=0
+      # puts "P: #{@prefix.inspect}"
+      # puts "Q: #{q.inspect}"
+
+        # Check whether operation prefix matches actual prefix
       @prefix.each do |p|
         unless p == q.shift
           resp.status=500
-          resp.body="Internal server (path) error\n"
+          resp.body="Internal server (prefix) error\nFrontend misconfiguration\n"
           return
         end
       end
+      args=[]
+      p=@tree
+      # puts "T: #{@tree.inspect}"
       q.each do |c|
-        pi=@prefix[i]
-        if pi
-          next if pi == c
-        end
-        next if c == '' # TODO: Only at the prefix!
+        c=c.gsub(/\$([2-7][0-9a-f])/) { $1.to_i(16).chr }
         q=p[c]
         if q
           p=q
@@ -119,7 +125,7 @@ module Pausly
         end
       end
       resp.status=404
-      resp.body="Not found\n"
+      resp.body="Not found\n"+req.path.inspect
     end
 
     def wrap(ob,rq,rp,args)
@@ -127,7 +133,7 @@ module Pausly
       rp.status=201
       begin
 
-        io=@iogen.new(rq)
+        io=@iogen.new(rq,self)
         ob.call(io,*args)
 
         body=io.body.to_html
@@ -170,14 +176,8 @@ module Pausly
         end
       end
 
-      rp.body="<!doctype html>
-<html>
-<head>
-<meta name='viewport' content='width=device-width'>
-<title>TODO</title>
-<link rel='stylesheet' type='text/css' href='s/css'>
-</head>#{body}</html>
-"
+      io.head.tag('title').add(io.title || '--untitled--')
+      rp.body="<!doctype html>\n<html>#{io.head.to_html}#{body}</html>\n"
     end
 
     def wrap_htmlesc(s)
@@ -186,16 +186,22 @@ module Pausly
   end
 
   class Io
-    attr_reader :cookies, :ip, :status, :headers, :method, :body, :data
+    attr_reader :cookies, :ip, :status, :headers, :method, :head, :body, :data
+    attr_accessor :title
 
     def path
       @request.path
     end
 
-    def initialize(rq)
+    def initialize(rq,sv)
+      @title=nil
+      @status=nil
+      @server=sv
       @request=rq
       @cookies={}
       @method=rq.request_method
+      @head=HtmlTools::Tag.new('head')
+      @head.tag('meta', name: 'viewport', content: 'width=device-width')
       @body=HtmlTools::Tag.new('body')
       @headers={}
       @data=nil
@@ -210,6 +216,30 @@ module Pausly
         end
       end
     end
+
+    def not_found
+      @status=404
+    end
+
+    def mkurl(*a)
+      # puts "mkurl(#{@server.prefix.inspect}, #{a.inspect})"
+
+      # Assuming only ascii printables in the RE
+      a=a.map {|x| x.gsub(/[\?\&\$\/]/) {|c| '$'+c.ord.to_s(16) } }
+
+      r=(@server.prefix+a).join('/')
+      # puts "    r:#{r.inspect}"
+      r='/' if r == '' # TODO: Ugly
+      r
+    end
+
+    def query_param(n=nil)
+      if n
+        @request.query[n]
+      else
+        @request.query
+      end
+    end
   end
 
   class Reply < RuntimeError
@@ -219,6 +249,13 @@ module Pausly
       @headers=headers
       @code=c
       @data=data
+    end
+  end
+
+  class NotFoundReply < Reply
+    def initialize
+      super("Not found\n", c=404)
+      @headers['Content-Type']='text/plain'
     end
   end
 
