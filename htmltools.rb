@@ -99,7 +99,9 @@ module HtmlTools
 
     # Convert the Tag into HTML. Tries some
     # linebreaking inside the tags to avoid
-    # lines getting too long.
+    # lines getting too long. (You can't
+    # linebreak outside tag b/c that constitutes
+    # a space, and that may change layout.)
     def to_html
       cnt=@body.map do |x|
         if x.instance_of? String
@@ -112,6 +114,7 @@ module HtmlTools
       end.join('')
       cnt+='</'+@name+'>'
       hd='<'+@name
+      hc=''
       @attrs.each_pair do |k,v|
         if v.instance_of? String
           t='"'+HtmlTools.escapeHTML(v)+'"'
@@ -123,10 +126,14 @@ module HtmlTools
         else
           u=k.to_s.gsub('_','-')
         end
+        if hd.length > 50
+          hc+=hd
+          hd="\n"
+        end
         hd+=' '+u+'='+t
       end
-      hd+="\n" if cnt.length > 60
-      hd+'>'+cnt
+      hd+="\n" if hd.length + cnt.length > 60
+      hc+hd+'>'+cnt
     end
   end
 
