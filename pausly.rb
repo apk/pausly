@@ -72,10 +72,12 @@ module Pausly
 
     def do_op(meth,req,resp)
       q=req.path.split('/',-1)
+      q=[''] if q==['',''] # TODO: Still ugly, or
+      #               you need the 'class U__ <U_; end' :-(
       # puts "P: #{@prefix.inspect}"
       # puts "Q: #{q.inspect}"
 
-        # Check whether operation prefix matches actual prefix
+      # Check whether operation prefix matches actual prefix
       @prefix.each do |p|
         unless p == q.shift
           resp.status=500
