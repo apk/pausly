@@ -254,9 +254,15 @@ module Pausly
     end
   end
 
+  class NoContentReply < Reply
+    def initialize
+      super("No Content\n", c=204)
+    end
+  end
+
   class NotFoundReply < Reply
     def initialize
-      super("Not found\n", c=404)
+      super("Not Found\n", c=404)
       @headers['Content-Type']='text/plain'
     end
   end
